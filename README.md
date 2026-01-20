@@ -1,6 +1,6 @@
-# Miestilo CRM
+# Mikromedia CRM
 
-Recent, modern CRM system for Miestilo Group.
+Recent, modern CRM system for Mikromedia.
 
 ## Tech Stack
 - Next.js 15 (App Router)

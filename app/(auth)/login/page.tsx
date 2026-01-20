@@ -64,8 +64,8 @@ export default function LoginPage() {
 
                 <div className="relative z-20 flex items-center text-lg font-medium">
                     {/* <Command className="mr-2 h-6 w-6" /> */}
-                    <img src="/logo.png" alt="Miestilo CRM" className="mr-2 h-10 w-auto" />
-                    Miestilo CRM
+                    <img src="/logo.png" alt="Mikromedia" className="mr-2 h-10 w-auto" />
+                    Mikromedia
                 </div>
                 <div className="relative z-20 mt-auto">
                     <blockquote className="space-y-2">
