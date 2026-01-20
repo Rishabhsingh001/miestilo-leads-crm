@@ -51,7 +51,6 @@ function SidebarContent({ profile, setOpen }: SidebarProps & { setOpen?: (open: 
             <div className="h-16 flex items-center px-6 border-b">
                 {/* <Shield className="h-6 w-6 mr-2 text-primary" /> */}
                 <img src="/logo.png" alt="Mikromedia" className="mr-2 h-10 w-auto" />
-                <span className="font-bold text-lg">Mikromedia</span>
             </div>
             <div className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
                 {links.map((link) => (
