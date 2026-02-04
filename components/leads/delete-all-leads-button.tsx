@@ -1,7 +1,7 @@
+
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { createClient } from "@/lib/supabase/client"
 import { Trash2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
@@ -15,6 +15,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog"
+import { deleteAllLeadsAction } from "@/app/actions"
 
 export function DeleteAllLeadsButton({ userRole }: { userRole: string }) {
     if (userRole !== 'admin') return null;
@@ -22,33 +23,14 @@ export function DeleteAllLeadsButton({ userRole }: { userRole: string }) {
     const [open, setOpen] = useState(false)
     const [deleting, setDeleting] = useState(false)
     const router = useRouter()
-    const supabase = createClient()
 
     const handleDeleteAll = async () => {
         setDeleting(true)
 
-        // Since we can't run TRUNCATE from client without super privs usually,
-        // we'll fetch all IDs and delete them. For massive datasets, an RPC is better,
-        // but for <1000 leads this is fine.
+        const result = await deleteAllLeadsAction()
 
-        const { error } = await supabase
-            .from('leads')
-            .delete()
-            .neq('id', '00000000-0000-0000-0000-000000000000') // Trick to match all UUIDs
-
-        // Fallback if neq doesn't work as expected with text logic (though id is uuid)
-        // Alternatively we can use greater than empty string if it acts as string
-
-        // A safer client-side purge:
-        // const { data } = await supabase.from('leads').select('id')
-        // if (data?.length) {
-        //    const ids = data.map(l => l.id)
-        //    await supabase.from('leads').delete().in('id', ids)
-        // }
-        // Let's stick to the .neq check which usually works for "delete all where id is not null" if passed right
-
-        if (error) {
-            toast.error("Failed to delete leads: " + error.message)
+        if ('error' in result && result.error) {
+            toast.error("Failed to delete leads")
         } else {
             toast.success("All leads have been deleted.")
             setOpen(false)

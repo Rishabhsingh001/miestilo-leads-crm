@@ -31,6 +31,7 @@ function SidebarContent({ profile, setOpen }: SidebarProps & { setOpen?: (open: 
 
     // Role based links
     if (profile?.role === 'admin' || profile?.role === 'manager') {
+        links.push({ name: "Teams", href: "/teams", icon: Users })
         links.push({ name: "Activity Logs", href: "/activity-logs", icon: Activity })
     }
     if (profile?.role === 'admin') {

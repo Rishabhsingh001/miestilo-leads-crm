@@ -1,24 +1,25 @@
+
 "use client"
 
 import { useEffect, useState } from "react"
 import { useRouter, useParams } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { toast } from "sonner"
-import { ArrowLeft, Save, Trash2, Phone, Mail, User, Building2, MapPin, Briefcase, GraduationCap } from "lucide-react"
+import { ArrowLeft, Save, Trash2, Phone, Mail, Building2, Briefcase } from "lucide-react"
 import { logActivity } from "@/lib/logger"
 
 import { LeadNotes } from "@/components/leads/lead-notes"
+import { getLeadAction, updateLeadAction, deleteLeadAction, getProfilesAction } from "@/app/actions/leads"
+import { useSession } from "next-auth/react"
 
 export default function LeadDetailsPage() {
     const router = useRouter()
     const params = useParams()
-    const supabase = createClient()
+    const { data: session } = useSession()
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [lead, setLead] = useState<any>(null)
@@ -33,17 +34,8 @@ export default function LeadDetailsPage() {
         country: "",
         city: "",
         profession: "",
-        course_name: "",
-        time_in_session: "",
-        days_attended: "0",
-        bootcamp_attendee: "no",
         status: "",
         source: "",
-        utm_source: "",
-        utm_campaign: "",
-        utm_medium: "",
-        utm_content: "",
-        utm_term: "",
         notes: "",
         assigned_to: ""
     })
@@ -51,32 +43,29 @@ export default function LeadDetailsPage() {
     const [profiles, setProfiles] = useState<any[]>([])
 
     useEffect(() => {
+        if (session?.user?.id) {
+            setCurrentUserId(session.user.id)
+        }
+    }, [session])
+
+    useEffect(() => {
         async function fetchData() {
             setLoading(true)
 
-            // Fetch current user
-            const { data: { user } } = await supabase.auth.getUser()
-            if (user) setCurrentUserId(user.id)
-
-            // Fetch all profiles for assignment dropdown
-            const { data: profilesData } = await supabase
-                .from('profiles')
-                .select('id, full_name, email')
-            setProfiles(profilesData || [])
+            // Fetch profiles
+            const profilesData = await getProfilesAction()
+            setProfiles(profilesData)
 
             // Fetch lead
-            const { data: leadData, error: leadError } = await supabase
-                .from('leads')
-                .select('*')
-                .eq('id', params.id)
-                .single()
+            const result = await getLeadAction(params.id as string)
 
-            if (leadError) {
-                toast.error("Could not fetch lead")
+            if ('error' in result && result.error) {
+                toast.error("Could not fetch lead: " + result.error)
                 router.push("/leads")
                 return
             }
 
+            const leadData = result as any
             setLead(leadData)
             setFormData({
                 name: leadData.name || "",
@@ -86,29 +75,20 @@ export default function LeadDetailsPage() {
                 country: leadData.country || "",
                 city: leadData.city || "",
                 profession: leadData.profession || "",
-                course_name: leadData.course_name || "",
-                time_in_session: leadData.time_in_session || "",
-                days_attended: leadData.days_attended?.toString() || "0",
-                bootcamp_attendee: leadData.bootcamp_attendee ? "yes" : "no",
                 status: leadData.status || "Fresh Untouched",
                 source: leadData.source || "",
-                utm_source: leadData.utm_source || "",
-                utm_campaign: leadData.utm_campaign || "",
-                utm_medium: leadData.utm_medium || "",
-                utm_content: leadData.utm_content || "",
-                utm_term: leadData.utm_term || "",
                 notes: leadData.notes || "",
                 assigned_to: leadData.assigned_to || ""
             })
             setLoading(false)
         }
         fetchData()
-    }, [params.id, router, supabase])
+    }, [params.id, router])
 
     async function handleSave() {
         setSaving(true)
 
-        const updates: any = {
+        const result = await updateLeadAction(params.id as string, {
             name: formData.name,
             email: formData.email,
             phone: formData.phone,
@@ -120,17 +100,13 @@ export default function LeadDetailsPage() {
             source: formData.source,
             notes: formData.notes,
             assigned_to: formData.assigned_to === 'unassigned' ? null : formData.assigned_to
-        }
+        })
 
-        const { error } = await supabase
-            .from('leads')
-            .update(updates)
-            .eq('id', params.id)
-
-        if (error) {
-            toast.error("Failed to update lead: " + error.message)
+        if (result.error) {
+            toast.error(result.error)
         } else {
-            // Track specific changes for logging
+            // Track specific changes for logging (optimistic logging or depend on server)
+            // Ideally server should log
             if (formData.status !== lead.status) {
                 await logActivity('Status Changed', 'lead', lead.id, { from: lead.status, to: formData.status })
             } else if (formData.assigned_to !== lead.assigned_to) {
@@ -141,7 +117,7 @@ export default function LeadDetailsPage() {
 
             toast.success("Lead updated successfully")
             // Refresh local lead state so next save compares correctly
-            setLead({ ...lead, ...updates })
+            setLead({ ...lead, ...formData })
             router.refresh()
         }
         setSaving(false)
@@ -150,13 +126,10 @@ export default function LeadDetailsPage() {
     async function handleDelete() {
         if (!confirm("Are you sure you want to delete this lead?")) return
 
-        const { error } = await supabase
-            .from('leads')
-            .delete()
-            .eq('id', params.id)
+        const result = await deleteLeadAction(params.id as string)
 
-        if (error) {
-            toast.error("Failed to delete lead. You might not have permission.")
+        if (result.error) {
+            toast.error("Failed to delete lead.")
         } else {
             toast.success("Lead deleted")
             router.push("/leads")

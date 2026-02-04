@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState } from "react"
@@ -20,10 +21,10 @@ import {
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { Pencil, Trash2, Activity, Lock, Eye, EyeOff } from "lucide-react"
+import { deleteTeamMemberAction, updateTeamMemberAction } from "@/app/actions/users"
 
 export function UserEditDialog({ user }: { user: any }) {
     const [open, setOpen] = useState(false)
@@ -32,34 +33,28 @@ export function UserEditDialog({ user }: { user: any }) {
     const [password, setPassword] = useState("")
     const [showPassword, setShowPassword] = useState(false)
     const [saving, setSaving] = useState(false)
-    const supabase = createClient()
     const router = useRouter()
 
     async function handleSave() {
         setSaving(true)
 
-        // Update Profile basics
-        const { error } = await supabase
-            .from('profiles')
-            .update({ role, status })
-            .eq('id', user.id)
-
-        if (error) {
-            toast.error("Failed to update profile: " + error.message)
+        // Handle Password Update if provided
+        if (password && password.length < 6) {
+            toast.error("Password must be at least 6 characters")
             setSaving(false)
             return
         }
 
-        // Handle Password Update if provided
-        if (password) {
-            if (password.length < 6) {
-                toast.error("Password must be at least 6 characters")
-                setSaving(false)
-                return
-            }
+        const result = await updateTeamMemberAction(user.id, {
+            role,
+            status,
+            password: password || undefined
+        })
 
-            // Note: Admin resetting another user's password requires Service Role Key on backend
-            toast.info("Password reset for other users requires Admin API permissions.")
+        if (result.error) {
+            toast.error("Failed to update profile: " + result.error)
+            setSaving(false)
+            return
         }
 
         toast.success("User updated successfully")
@@ -71,13 +66,10 @@ export function UserEditDialog({ user }: { user: any }) {
     async function handleRemove() {
         if (!confirm(`Are you sure you want to remove ${user.full_name || user.email}? This will delete their profile.`)) return
 
-        const { error } = await supabase
-            .from('profiles')
-            .delete()
-            .eq('id', user.id)
+        const result = await deleteTeamMemberAction(user.id)
 
-        if (error) {
-            toast.error("Failed to delete profile: " + error.message)
+        if (result.error) {
+            toast.error("Failed to delete profile: " + result.error)
         } else {
             toast.success("User profile removed.")
             setOpen(false)

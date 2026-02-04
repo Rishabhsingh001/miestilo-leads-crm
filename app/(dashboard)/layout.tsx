@@ -1,20 +1,34 @@
-import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { MobileSidebar, Sidebar } from "@/components/sidebar"
-
+import { auth } from "@/auth"
+import prisma from "@/lib/prisma"
+import { Profile } from "@/types"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const session = await auth()
+
+    if (!session?.user?.email) {
+        redirect("/login")
+    }
+
+    const user = await prisma.user.findUnique({
+        where: { email: session.user.email }
+    })
 
     if (!user) {
         redirect("/login")
     }
 
-    // Fetch profile
-    // Note: RLS ensures we only fetch what we can see, but generic select might return null if profile not created yet.
-    // Profile is created via trigger.
-    const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+    // Map Prisma User to Profile interface
+    const profile: Profile = {
+        id: user.id,
+        email: user.email,
+        full_name: user.name,
+        avatar_url: user.avatarUrl,
+        role: user.role as any,
+        status: user.status as any,
+        created_at: user.createdAt.toISOString()
+    }
 
     return (
         <div className="flex min-h-screen bg-gray-50/50">
@@ -23,8 +37,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
                 {/* Mobile Header */}
                 <div className="lg:hidden h-16 border-b bg-white flex items-center px-4 justify-between shrink-0">
                     <div className="flex items-center font-bold text-lg">
-                        <img src="/logo.png" alt="Miestilo CRM" className="mr-2 h-8 w-auto" />
-                        Miestilo CRM
+                        <img src="/logo.png" alt="Mikromedia" className="mr-2 h-8 w-auto" />
                     </div>
                     <MobileSidebar profile={profile} />
                 </div>

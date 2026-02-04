@@ -1,3 +1,4 @@
+
 "use client"
 
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -14,10 +15,10 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { createLeadAction } from "@/app/actions"
 
 const formSchema = z.object({
     name: z.string().min(2, {
@@ -31,7 +32,6 @@ const formSchema = z.object({
 
 export default function NewLeadPage() {
     const router = useRouter()
-    const supabase = createClient()
 
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
@@ -45,7 +45,7 @@ export default function NewLeadPage() {
     })
 
     async function onSubmit(values: z.infer<typeof formSchema>) {
-        const { error } = await supabase.from('leads').insert({
+        const result = await createLeadAction({
             name: values.name,
             email: values.email || null,
             phone: values.phone || null,
@@ -53,8 +53,8 @@ export default function NewLeadPage() {
             source: values.source,
         })
 
-        if (error) {
-            toast.error("Failed to create lead: " + error.message)
+        if (result.error) {
+            toast.error("Failed to create lead: " + result.error)
             return
         }
 

@@ -1,11 +1,13 @@
 
 generator client {
   provider = "prisma-client-js"
+  engineType = "library"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -16,6 +18,12 @@ model User {
   avatarUrl     String?   @map("avatar_url")
   role          String    @default("sales") // 'admin' | 'manager' | 'sales'
   status        String    @default("active") // 'active' | 'disabled'
+  
+  // Team Relations
+  teamId        String?   @map("team_id")
+  team          Team?     @relation("TeamMembers", fields: [teamId], references: [id])
+  managedTeam   Team?     @relation("TeamManager")
+
   createdAt     DateTime  @default(now()) @map("created_at")
   
   // Relations
@@ -27,6 +35,18 @@ model User {
   leadNotes     LeadNote[]
 
   @@map("users")
+}
+
+model Team {
+  id          String   @id @default(cuid())
+  name        String
+  managerId   String   @unique @map("manager_id")
+  manager     User     @relation("TeamManager", fields: [managerId], references: [id])
+  members     User[]   @relation("TeamMembers")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("teams")
 }
 
 model Lead {

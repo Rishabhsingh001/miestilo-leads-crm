@@ -1,7 +1,7 @@
+
 "use client"
 
 import { useEffect, useState, useRef } from "react"
-import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
@@ -9,10 +9,12 @@ import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { getProfileSettingsAction, updateProfileSettingsAction, uploadAvatarAction } from "@/app/actions/settings"
+import { useSession } from "next-auth/react"
 
 export default function SettingsPage() {
-    const supabase = createClient()
     const router = useRouter()
+    const { data: session } = useSession()
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [uploading, setUploading] = useState(false)
@@ -23,29 +25,27 @@ export default function SettingsPage() {
     useEffect(() => {
         async function fetchProfile() {
             setLoading(true)
-            const { data: { user } } = await supabase.auth.getUser()
-            if (user) {
-                const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-                if (data) {
-                    setProfile(data)
-                    setFullName(data.full_name || "")
-                }
+            const result = await getProfileSettingsAction()
+            if ('error' in result && result.error) {
+                // If unauthorized or not found
+                console.error(result.error)
+            } else {
+                const data = result as any
+                setProfile(data)
+                setFullName(data.full_name || "")
             }
             setLoading(false)
         }
         fetchProfile()
-    }, [supabase])
+    }, [session]) // Re-run when session loads
 
     async function handleSave() {
         if (!profile) return
 
         setSaving(true)
-        const { error } = await supabase
-            .from('profiles')
-            .update({ full_name: fullName })
-            .eq('id', profile.id)
+        const result = await updateProfileSettingsAction({ full_name: fullName })
 
-        if (error) {
+        if (result.error) {
             toast.error("Failed to update profile")
         } else {
             toast.success("Profile updated")
@@ -63,40 +63,23 @@ export default function SettingsPage() {
 
             setUploading(true)
             const file = event.target.files[0]
-            const fileExt = file.name.split('.').pop()
-            const filePath = `${profile.id}/${Math.random()}.${fileExt}`
 
-            // Upload image
-            const { error: uploadError } = await supabase.storage
-                .from('avatars')
-                .upload(filePath, file)
+            const formData = new FormData()
+            formData.append("file", file)
 
-            if (uploadError) {
-                throw uploadError
-            }
+            const result = await uploadAvatarAction(formData)
 
-            // Get public URL
-            const { data: { publicUrl } } = supabase.storage
-                .from('avatars')
-                .getPublicUrl(filePath)
-
-            // Update profile
-            const { error: updateError } = await supabase
-                .from('profiles')
-                .update({ avatar_url: publicUrl })
-                .eq('id', profile.id)
-
-            if (updateError) {
-                throw updateError
+            if (result.error) {
+                throw new Error(result.error)
             }
 
             // Update local state
-            setProfile({ ...profile, avatar_url: publicUrl })
+            setProfile({ ...profile, avatar_url: result.url })
             toast.success("Avatar updated successfully")
             router.refresh()
         } catch (error: any) {
             console.error(error)
-            toast.error("Error uploading avatar: " + error.message)
+            toast.error("Error uploading avatar: " + (error.message || "Unknown error"))
         } finally {
             setUploading(false)
         }

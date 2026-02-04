@@ -1,3 +1,4 @@
+
 "use client"
 
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -15,7 +16,6 @@ import {
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { CalendarIcon } from "lucide-react"
@@ -24,6 +24,8 @@ import { cn } from "@/lib/utils"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { createTaskAction } from "@/app/actions/tasks"
+import { useState } from "react"
 
 const formSchema = z.object({
     title: z.string().min(2, "Title is required"),
@@ -35,7 +37,7 @@ const formSchema = z.object({
 
 export default function NewTaskPage() {
     const router = useRouter()
-    const supabase = createClient()
+    const [submitting, setSubmitting] = useState(false)
 
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
@@ -48,23 +50,23 @@ export default function NewTaskPage() {
     })
 
     async function onSubmit(values: z.infer<typeof formSchema>) {
-        const { error } = await supabase.from('tasks').insert({
+        setSubmitting(true)
+        const result = await createTaskAction({
             title: values.title,
             description: values.description,
             priority: values.priority,
             status: values.status,
-            due_date: values.due_date ? values.due_date.toISOString() : null,
+            due_date: values.due_date,
         })
 
-        if (error) {
-            toast.error("Failed to create task")
-            console.error(error)
-            return
+        if (result.error) {
+            toast.error("Failed to create task: " + result.error)
+        } else {
+            toast.success("Task created successfully")
+            router.push("/tasks")
+            router.refresh()
         }
-
-        toast.success("Task created successfully")
-        router.push("/tasks")
-        router.refresh()
+        setSubmitting(false)
     }
 
     return (
@@ -191,7 +193,9 @@ export default function NewTaskPage() {
                             />
                             <div className="flex justify-end gap-2">
                                 <Button variant="outline" type="button" onClick={() => router.back()}>Cancel</Button>
-                                <Button type="submit">Create Task</Button>
+                                <Button type="submit" disabled={submitting}>
+                                    {submitting ? "Creating..." : "Create Task"}
+                                </Button>
                             </div>
                         </form>
                     </Form>

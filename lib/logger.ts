@@ -1,4 +1,5 @@
-import { createClient } from "./supabase/client"
+
+import { logActivityAction } from "@/app/actions";
 
 export type LogAction =
     | 'Lead Created'
@@ -15,20 +16,9 @@ export type LogAction =
 export type EntityType = 'lead' | 'task' | 'auth' | 'user'
 
 export async function logActivity(action: LogAction, entityType: EntityType, entityId?: string, details?: any) {
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) return
-
-    const { error } = await supabase.from('activity_logs').insert({
-        user_id: user.id,
-        action,
-        entity_type: entityType,
-        entity_id: entityId,
-        details
-    })
-
-    if (error) {
-        console.error('Failed to log activity:', error)
+    try {
+        await logActivityAction(action, entityType, entityId, details);
+    } catch (error) {
+        console.error('Failed to log activity:', error);
     }
 }

@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -6,10 +6,36 @@ import { UserEditDialog } from "@/components/users/user-edit-dialog"
 import { UserInviteDialog } from "@/components/users/user-invite-dialog"
 import { Shield, Users as UsersIcon, Mail, Calendar } from "lucide-react"
 import { format } from "date-fns"
+import { auth } from "@/auth"
+import { redirect } from "next/navigation"
+import prisma from "@/lib/prisma"
 
 export default async function UsersPage() {
-    const supabase = await createClient()
-    const { data: users } = await supabase.from('profiles').select('*').order('created_at', { ascending: false })
+    const session = await auth()
+    if (!session?.user?.email) redirect("/login")
+
+    const currentUser = await prisma.user.findUnique({
+        where: { email: session.user.email },
+        select: { role: true }
+    })
+
+    if (currentUser?.role !== 'admin') {
+        redirect("/dashboard")
+    }
+
+    const prismaUsers = await prisma.user.findMany({
+        orderBy: { createdAt: 'desc' }
+    })
+
+    const users = prismaUsers.map(user => ({
+        id: user.id,
+        email: user.email,
+        full_name: user.name,
+        avatar_url: user.avatarUrl,
+        role: user.role as any,
+        status: user.status as any,
+        created_at: user.createdAt.toISOString()
+    }))
 
     return (
         <div className="space-y-6">
@@ -28,7 +54,7 @@ export default async function UsersPage() {
                         <UsersIcon className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{users?.length || 0}</div>
+                        <div className="text-2xl font-bold">{users.length}</div>
                     </CardContent>
                 </Card>
                 <Card>
@@ -37,7 +63,7 @@ export default async function UsersPage() {
                         <Shield className="h-4 w-4 text-primary" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{users?.filter(u => u.role === 'admin').length || 0}</div>
+                        <div className="text-2xl font-bold">{users.filter(u => u.role === 'admin').length}</div>
                     </CardContent>
                 </Card>
                 <Card>
@@ -46,7 +72,7 @@ export default async function UsersPage() {
                         <div className="h-2 w-2 rounded-full bg-green-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{users?.filter(u => u.status === 'active').length || 0}</div>
+                        <div className="text-2xl font-bold">{users.filter(u => u.status === 'active').length}</div>
                     </CardContent>
                 </Card>
             </div>
@@ -66,7 +92,7 @@ export default async function UsersPage() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {users?.map((user) => (
+                        {users.map((user) => (
                             <TableRow key={user.id} className="hover:bg-slate-50/50 transition-colors">
                                 <TableCell>
                                     <div className="flex items-center gap-3">
@@ -83,8 +109,8 @@ export default async function UsersPage() {
                                 </TableCell>
                                 <TableCell>
                                     <Badge variant="secondary" className={`capitalize font-medium ${user.role === 'admin' ? 'bg-primary/10 text-primary border-primary/20' :
-                                            user.role === 'manager' ? 'bg-blue-100 text-blue-700 border-blue-200' :
-                                                'bg-slate-100 text-slate-700 border-slate-200'
+                                        user.role === 'manager' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                                            'bg-slate-100 text-slate-700 border-slate-200'
                                         }`}>
                                         {user.role}
                                     </Badge>

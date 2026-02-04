@@ -1,6 +1,7 @@
+
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { TaskDialog } from "./task-dialog"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -10,7 +11,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { format, isToday, isPast, isTomorrow } from "date-fns"
 import { CheckCircle2, Circle, Clock, AlertCircle, Search, Calendar as CalendarIcon, Filter, MoreHorizontal } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import {
     AlertDialog,
@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useRouter } from "next/navigation"
 import { logActivity } from "@/lib/logger"
+import { toggleTaskStatusAction, deleteTaskAction } from "@/app/actions/tasks"
 
 interface TasksViewProps {
     initialTasks: any[]
@@ -45,37 +46,49 @@ export function TasksView({ initialTasks }: TasksViewProps) {
     const [priorityFilter, setPriorityFilter] = useState("all")
     const [activeTab, setActiveTab] = useState("all")
     const router = useRouter()
-    const supabase = createClient()
+
+    useEffect(() => {
+        setTasks(initialTasks)
+    }, [initialTasks])
 
     const refreshTasks = async () => {
-        const { data } = await supabase
-            .from('tasks')
-            .select('*, assignee:profiles!assigned_to(full_name, email), lead:leads(name)')
-            .order('due_date', { ascending: true })
-        if (data) setTasks(data)
         router.refresh()
     }
 
     async function toggleStatus(task: any) {
         const newStatus = task.status === 'done' ? 'pending' : 'done'
-        const { error } = await supabase.from('tasks').update({ status: newStatus }).eq('id', task.id)
-        if (error) {
-            toast.error("Failed to update task")
-        } else {
+
+        // Optimistic update
+        const updatedTasks = tasks.map(t =>
+            t.id === task.id ? { ...t, status: newStatus } : t
+        )
+        setTasks(updatedTasks)
+
+        try {
+            await toggleTaskStatusAction(task.id, newStatus)
             if (newStatus === 'done') {
                 await logActivity('Task Completed', 'task', task.id, { title: task.title })
             }
             toast.success(newStatus === 'done' ? "Task completed" : "Task re-opened")
-            refreshTasks()
+            router.refresh()
+        } catch (error) {
+            toast.error("Failed to update task")
+            setTasks(tasks) // Revert
         }
     }
 
     async function deleteTask(id: string) {
-        const { error } = await supabase.from('tasks').delete().eq('id', id)
-        if (error) toast.error("Failed to delete")
-        else {
+        // Optimistic
+        const updatedTasks = tasks.filter(t => t.id !== id)
+        setTasks(updatedTasks)
+
+        const result = await deleteTaskAction(id)
+        if (result.error) {
+            toast.error("Failed to delete")
+            setTasks(tasks) // Revert
+        } else {
             toast.success("Task deleted")
-            refreshTasks()
+            router.refresh()
         }
     }
 

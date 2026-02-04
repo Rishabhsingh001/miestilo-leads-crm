@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState } from "react"
@@ -20,10 +21,10 @@ import {
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { UserPlus, Mail, Lock, Eye, EyeOff } from "lucide-react"
+import { createTeamMemberAction } from "@/app/actions/users"
 
 export function UserInviteDialog() {
     const [open, setOpen] = useState(false)
@@ -33,7 +34,6 @@ export function UserInviteDialog() {
     const [showPassword, setShowPassword] = useState(false)
     const [role, setRole] = useState("sales")
     const [loading, setLoading] = useState(false)
-    const supabase = createClient()
     const router = useRouter()
 
     async function handleCreate() {
@@ -49,40 +49,22 @@ export function UserInviteDialog() {
 
         setLoading(true)
 
-        try {
-            // Note for User: Admin creation with password usually requires Supabase Service Role Key 
-            // used in a Server Action/Edge Function. From the client side, we'll suggest using service role
-            // for production, but for now we'll acknowledge the request.
+        const result = await createTeamMemberAction({
+            email,
+            password,
+            fullName,
+            role
+        })
 
-            // Checking if user exists in profiles (business logic level)
-            const { data: existing } = await supabase
-                .from('profiles')
-                .select('id')
-                .eq('email', email)
-                .single()
-
-            if (existing) {
-                toast.error("A user with this email already exists.")
-                setLoading(false)
-                return
-            }
-
-            // Implementation note: Ideally this calls a Server Action like `createUser(email, password, role, fullName)`
-            // which uses `supabase.auth.admin.createUser`.
-
-            toast.info("Direct user creation with password requires Admin API (Service Role Key).")
-
-            // For the sake of UI workflow, let's pretend it's sent to a backend that handles it
-            toast.success(`User ${fullName} (${email}) created successfully with specified password.`)
-
+        if (result.error) {
+            toast.error(result.error)
+        } else {
+            toast.success(`User ${fullName} (${email}) created successfully.`)
             setOpen(false)
             resetForm()
             router.refresh()
-        } catch (error: any) {
-            toast.error("Creation failed: " + error.message)
-        } finally {
-            setLoading(false)
         }
+        setLoading(false)
     }
 
     const resetForm = () => {

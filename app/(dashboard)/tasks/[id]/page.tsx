@@ -1,8 +1,8 @@
+
 "use client"
 
 import { useEffect, useState } from "react"
 import { useRouter, useParams } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -15,11 +15,11 @@ import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { getTaskAction, updateTaskAction, deleteTaskAction } from "@/app/actions/tasks"
 
 export default function EditTaskPage() {
     const router = useRouter()
     const params = useParams()
-    const supabase = createClient()
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [task, setTask] = useState<any>(null)
@@ -34,17 +34,16 @@ export default function EditTaskPage() {
 
     useEffect(() => {
         async function fetchTask() {
-            const { data, error } = await supabase
-                .from('tasks')
-                .select('*')
-                .eq('id', params.id)
-                .single()
+            const result = await getTaskAction(params.id as string)
 
-            if (error) {
-                toast.error("Could not fetch task")
+            if ('error' in result && result.error) {
+                toast.error("Could not fetch task: " + result.error)
                 router.push("/tasks")
                 return
             }
+
+            // Result is task data
+            const data = result as any
 
             setTask(data)
             setFormData({
@@ -57,19 +56,16 @@ export default function EditTaskPage() {
             setLoading(false)
         }
         fetchTask()
-    }, [params.id, router, supabase])
+    }, [params.id, router])
 
     async function handleSave() {
         setSaving(true)
-        const { error } = await supabase
-            .from('tasks')
-            .update({
-                ...formData,
-                due_date: formData.due_date ? formData.due_date.toISOString() : null
-            })
-            .eq('id', params.id)
+        const result = await updateTaskAction(params.id as string, {
+            ...formData,
+            due_date: formData.due_date // Action handles conversion or Date object
+        })
 
-        if (error) {
+        if (result.error) {
             toast.error("Failed to update task")
         } else {
             toast.success("Task updated successfully")
@@ -81,12 +77,9 @@ export default function EditTaskPage() {
     async function handleDelete() {
         if (!confirm("Are you sure you want to delete this task?")) return
 
-        const { error } = await supabase
-            .from('tasks')
-            .delete()
-            .eq('id', params.id)
+        const result = await deleteTaskAction(params.id as string)
 
-        if (error) {
+        if (result.error) {
             toast.error("Failed to delete task.")
         } else {
             toast.success("Task deleted")
@@ -177,6 +170,7 @@ export default function EditTaskPage() {
                                     selected={formData.due_date}
                                     onSelect={(date) => setFormData({ ...formData, due_date: date })}
                                     initialFocus
+                                    disabled={(date) => date < new Date("1900-01-01")}
                                 />
                             </PopoverContent>
                         </Popover>

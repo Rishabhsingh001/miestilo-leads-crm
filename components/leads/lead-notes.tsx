@@ -1,16 +1,16 @@
+
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { createClient } from "@/lib/supabase/client"
-import { LeadNote, Profile } from "@/types"
+import { LeadNote } from "@/types"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { format } from "date-fns"
 import { Send, Loader2, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { logActivity } from "@/lib/logger"
+import { getLeadNotesAction, createLeadNoteAction, deleteLeadNoteAction } from "@/app/actions/leads"
 
 interface LeadNotesProps {
     leadId: string
@@ -22,7 +22,6 @@ export function LeadNotes({ leadId, currentUserId }: LeadNotesProps) {
     const [newNote, setNewNote] = useState("")
     const [loading, setLoading] = useState(true)
     const [sending, setSending] = useState(false)
-    const supabase = createClient()
     const scrollRef = useRef<HTMLDivElement>(null)
 
     useEffect(() => {
@@ -38,20 +37,13 @@ export function LeadNotes({ leadId, currentUserId }: LeadNotesProps) {
 
     async function fetchNotes() {
         setLoading(true)
-        const { data, error } = await supabase
-            .from('lead_notes')
-            .select(`
-                *,
-                user:profiles(id, full_name, email, avatar_url)
-            `)
-            .eq('lead_id', leadId)
-            .order('created_at', { ascending: true })
-
-        if (error) {
-            console.error("Error fetching notes:", error)
-            toast.error("Failed to load notes")
-        } else {
+        try {
+            const data = await getLeadNotesAction(leadId)
+            // @ts-ignore
             setNotes(data || [])
+        } catch (error) {
+            console.error(error)
+            toast.error("Failed to load notes")
         }
         setLoading(false)
     }
@@ -60,26 +52,13 @@ export function LeadNotes({ leadId, currentUserId }: LeadNotesProps) {
         if (!newNote.trim()) return
         setSending(true)
 
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
-            toast.error("You must be logged in")
-            setSending(false)
-            return
-        }
+        const result = await createLeadNoteAction(leadId, newNote.trim())
 
-        const { error } = await supabase
-            .from('lead_notes')
-            .insert({
-                lead_id: leadId,
-                user_id: user.id,
-                content: newNote.trim()
-            })
-
-        if (error) {
-            toast.error("Failed to send note")
+        if (result.error) {
+            toast.error(result.error)
         } else {
             setNewNote("")
-            fetchNotes() // Refresh to show new note with user details
+            await fetchNotes() // Refresh to show new note with user details
             await logActivity('Note Added', 'lead', leadId)
         }
         setSending(false)
@@ -87,16 +66,14 @@ export function LeadNotes({ leadId, currentUserId }: LeadNotesProps) {
 
     async function handleDelete(noteId: string) {
         // Optimistic update
+        const prevNotes = [...notes]
         setNotes(notes.filter(n => n.id !== noteId))
 
-        const { error } = await supabase
-            .from('lead_notes')
-            .delete()
-            .eq('id', noteId)
+        const result = await deleteLeadNoteAction(noteId)
 
-        if (error) {
+        if (result.error) {
             toast.error("Failed to delete note")
-            fetchNotes() // Revert on error
+            setNotes(prevNotes) // Revert on error
         }
     }
 
@@ -141,8 +118,8 @@ export function LeadNotes({ leadId, currentUserId }: LeadNotesProps) {
                                         )}
                                     </div>
                                     <div className={`px-4 py-2 rounded-lg text-sm shadow-sm ${isMe
-                                            ? 'bg-primary text-primary-foreground rounded-tr-none'
-                                            : 'bg-white border rounded-tl-none'
+                                        ? 'bg-primary text-primary-foreground rounded-tr-none'
+                                        : 'bg-white border rounded-tl-none'
                                         }`}>
                                         {note.content}
                                     </div>

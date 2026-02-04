@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState } from "react"
@@ -26,11 +27,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { Plus } from "lucide-react"
-import { logActivity } from "@/lib/logger"
+import { createLeadAction } from "@/app/actions"
 
 const formSchema = z.object({
     name: z.string().min(2, "Name is required"),
@@ -57,7 +57,6 @@ const formSchema = z.object({
 export function LeadDialog() {
     const [open, setOpen] = useState(false)
     const router = useRouter()
-    const supabase = createClient()
 
     const form = useForm({
         resolver: zodResolver(formSchema),
@@ -85,43 +84,23 @@ export function LeadDialog() {
     })
 
     async function onSubmit(values: z.infer<typeof formSchema>) {
-        const { data: { user } } = await supabase.auth.getUser()
-
-        // Check for duplicates
-        if (values.email) {
-            const { data: existingLead } = await supabase
-                .from('leads')
-                .select('id')
-                .eq('email', values.email)
-                .single()
-
-            if (existingLead) {
-                toast.error("A lead with this email already exists.")
-                return
-            }
-        }
-
-        const { data: newLead, error } = await supabase.from('leads').insert({
+        const payload = {
             ...values,
             days_attended: values.days_attended ? parseInt(values.days_attended) || 0 : 0,
-            bootcamp_attendee: values.bootcamp_attendee === 'yes',
-            created_by: user?.id,
-            assigned_to: user?.id
-        }).select().single()
-
-        if (error) {
-            toast.error("Failed to create lead: " + error.message)
-            return
+            bootcamp_attendee: values.bootcamp_attendee === 'yes'
         }
 
-        if (newLead) {
-            await logActivity('Lead Created', 'lead', newLead.id, { name: newLead.name })
+        const result = await createLeadAction(payload)
+
+        if (result.error) {
+            toast.error(result.error)
+            return
         }
 
         toast.success("Lead created successfully")
         setOpen(false)
         form.reset()
-        router.refresh()
+        // router.refresh() // revalidatePath in action handles this
     }
 
     return (

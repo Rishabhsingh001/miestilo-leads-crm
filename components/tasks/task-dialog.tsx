@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useEffect, useState } from "react"
@@ -31,10 +32,9 @@ import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
 import { cn } from "@/lib/utils"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { Plus } from "lucide-react"
-import { logActivity } from "@/lib/logger"
+import { createTaskAction, updateTaskAction, getTaskFormDataAction } from "@/app/actions/tasks"
 
 const formSchema = z.object({
     title: z.string().min(2, "Title is required"),
@@ -59,7 +59,6 @@ export function TaskDialog({ open, onOpenChange, trigger, onSuccess, task }: Tas
     const [profiles, setProfiles] = useState<any[]>([])
     const [leads, setLeads] = useState<any[]>([])
     const [loadingData, setLoadingData] = useState(false)
-    const supabase = createClient()
 
     // Sync open state
     useEffect(() => {
@@ -97,52 +96,33 @@ export function TaskDialog({ open, onOpenChange, trigger, onSuccess, task }: Tas
 
     async function fetchData() {
         setLoadingData(true)
-        // Fetch profiles
-        const { data: profilesData } = await supabase.from('profiles').select('id, full_name, email')
-        setProfiles(profilesData || [])
-
-        // Fetch leads (limit to top 100 for now or search logic needed for large datasets)
-        const { data: leadsData } = await supabase.from('leads').select('id, name, company').order('created_at', { ascending: false }).limit(50)
-        setLeads(leadsData || [])
+        const data = await getTaskFormDataAction()
+        setProfiles(data.profiles)
+        setLeads(data.leads)
         setLoadingData(false)
     }
 
     async function onSubmit(values: z.infer<typeof formSchema>) {
-        const { data: { user } } = await supabase.auth.getUser()
-
         const payload: any = {
             title: values.title,
             description: values.description,
             priority: values.priority,
             status: values.status,
-            due_date: values.due_date ? values.due_date.toISOString() : null,
+            due_date: values.due_date, // Date object or string? Action expects Date usually if Prisma type is Date
             assigned_to: (values.assigned_to === 'unassigned' || !values.assigned_to) ? null : values.assigned_to,
             lead_id: (values.lead_id === 'unlinked' || !values.lead_id) ? null : values.lead_id,
         }
 
-        let error
-        let finalTask: any
+        let result
         if (task?.id) {
-            const { data, error: updateError } = await supabase.from('tasks').update(payload).eq('id', task.id).select().single()
-            error = updateError
-            finalTask = data
+            result = await updateTaskAction(task.id, payload)
         } else {
-            payload.created_by = user?.id
-            const { data, error: insertError } = await supabase.from('tasks').insert(payload).select().single()
-            error = insertError
-            finalTask = data
+            result = await createTaskAction(payload)
         }
 
-        if (error) {
-            console.error("Task Save Error:", error)
-            toast.error(`Failed to save task: ${error.message}`)
+        if (result.error) {
+            toast.error(`Failed to save task: ${result.error}`)
             return
-        }
-
-        if (!task?.id && finalTask) {
-            await logActivity('Task Created', 'task', finalTask.id, { title: finalTask.title })
-        } else if (task?.id && finalTask && task.status !== finalTask.status && finalTask.status === 'done') {
-            await logActivity('Task Completed', 'task', finalTask.id, { title: finalTask.title })
         }
 
         toast.success(task?.id ? "Task updated" : "Task created")

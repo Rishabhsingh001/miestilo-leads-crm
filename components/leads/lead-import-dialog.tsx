@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useRef } from "react"
@@ -16,9 +17,9 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Upload, FileUp, Link as LinkIcon } from "lucide-react"
 import Papa from "papaparse"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
+import { importLeadsAction } from "@/app/actions"
 
 export function LeadImportDialog() {
     const [open, setOpen] = useState(false)
@@ -28,7 +29,6 @@ export function LeadImportDialog() {
     const [preview, setPreview] = useState<any[]>([])
     const [uploading, setUploading] = useState(false)
     const fileInputRef = useRef<HTMLInputElement>(null)
-    const supabase = createClient()
     const router = useRouter()
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -79,39 +79,27 @@ export function LeadImportDialog() {
     }
 
     const processImport = async (data: any[]) => {
-        // Get current user to set as creator/assignee
-        const { data: { user }, error: userError } = await supabase.auth.getUser()
-
-        if (userError || !user) {
-            setUploading(false)
-            toast.error("Authentication error: Could not verify user identity. Please reload.")
-            return
-        }
-
         if (data.length === 0) {
             setUploading(false)
             toast.error("No data found to import.")
             return
         }
 
-        const emailsToCheck = new Set<string>()
-
         const leads = data
             .map((row: any) => {
                 // Smart mapping
-                const name = getValue(row, ['name', 'full name', 'fullname', 'contact name']) || 'Unknown'
-                const email = getValue(row, ['email', 'e-mail', 'email address']) || ""
-                const phoneRaw = getValue(row, ['phone', 'phone number', 'mobile', 'cell', 'contact number'])
-                const company = getValue(row, ['company', 'company name', 'organization'])
-                const country = getValue(row, ['country', 'region'])
-                const city = getValue(row, ['city', 'location'])
-                const profession = getValue(row, ['profession', 'job title', 'job', 'position', 'role', 'designation', 'occupation'])
-                const source = getValue(row, ['source', 'lead source'])
-                const notes = getValue(row, ['notes', 'note', 'comments', 'description', 'remarks', 'details', 'info'])
+                // Smart mapping
+                const name = getValue(row, ['name', 'full name', 'fullname', 'contact name', 'first name', 'business name', 'title']) || 'Unknown'
+                const email = getValue(row, ['email', 'e-mail', 'email address', 'business email', 'contact email', 'mail']) || ""
+                const phoneRaw = getValue(row, ['phone', 'phone number', 'mobile', 'cell', 'contact number', 'business phone', 'office phone', 'tel'])
+                const company = getValue(row, ['company', 'company name', 'organization', 'business name', 'business', 'org'])
+                const country = getValue(row, ['country', 'region', 'location', 'country/region'])
+                const city = getValue(row, ['city', 'town', 'municipality', 'location'])
+                const profession = getValue(row, ['profession', 'job title', 'job', 'position', 'role', 'designation', 'occupation', 'category', 'industry'])
+                const source = getValue(row, ['source', 'lead source', 'utm_source', 'origin'])
+                const notes = getValue(row, ['notes', 'note', 'comments', 'description', 'remarks', 'details', 'info', 'website', 'business website', 'url'])
 
                 const phone = cleanPhone(phoneRaw)
-
-                if (email) emailsToCheck.add(email)
 
                 return {
                     name,
@@ -126,74 +114,17 @@ export function LeadImportDialog() {
                     status: 'Fresh Untouched',
                     bootcamp_attendee: false,
                     days_attended: 0,
-                    created_by: user.id,
-                    assigned_to: user.id
                 }
             })
             // Filter out rows that are completely empty or missing key info
             .filter((l: any) => l.name !== 'Unknown' || l.email || l.phone)
 
-        // 2. Duplicate Check (Email & Phone)
-        const existingEmails = new Set<string>()
-        const existingPhones = new Set<string>()
+        const result = await importLeadsAction(leads)
 
-        // Check Emails
-        const emailArray = Array.from(emailsToCheck).filter(Boolean)
-        if (emailArray.length > 0) {
-            const chunkSize = 1000
-            for (let i = 0; i < emailArray.length; i += chunkSize) {
-                const batch = emailArray.slice(i, i + chunkSize)
-                const { data: existing } = await supabase
-                    .from('leads')
-                    .select('email')
-                    .in('email', batch)
-                existing?.forEach(l => existingEmails.add(l.email))
-            }
-        }
-
-        // Check Phones
-        const phoneArray = leads.map((l: any) => l.phone).filter(Boolean)
-        const uniquePhonesToCheck = Array.from(new Set(phoneArray))
-        if (uniquePhonesToCheck.length > 0) {
-            const chunkSize = 1000
-            for (let i = 0; i < uniquePhonesToCheck.length; i += chunkSize) {
-                const batch = uniquePhonesToCheck.slice(i, i + chunkSize) as string[]
-                const { data: existing } = await supabase
-                    .from('leads')
-                    .select('phone')
-                    .in('phone', batch)
-                existing?.forEach(l => existingPhones.add(l.phone))
-            }
-        }
-
-        // 3. Filter Duplicates and Count
-        let duplicateEmailCount = 0
-        let duplicatePhoneCount = 0
-
-        const finalLeads = leads.filter((l: any) => {
-            const isEmailDup = l.email && existingEmails.has(l.email)
-            // If email is already dup, don't count as phone dup to avoid double counting same lead
-            const isPhoneDup = !isEmailDup && l.phone && existingPhones.has(l.phone)
-
-            if (isEmailDup) duplicateEmailCount++
-            else if (isPhoneDup) duplicatePhoneCount++
-
-            return !isEmailDup && !isPhoneDup
-        })
-
-        if (finalLeads.length === 0) {
-            setUploading(false)
-            toast.warning(`No new leads found. Skipped ${duplicateEmailCount} email duplicates and ${duplicatePhoneCount} phone duplicates.`)
-            return
-        }
-
-        // Batch insert
-        const { error } = await supabase.from('leads').insert(finalLeads)
-
-        if (error) {
-            toast.error("Failed to import: " + error.message)
+        if (result.error) {
+            toast.error(result.error)
         } else {
-            toast.success(`Imported ${finalLeads.length} leads. Skipped ${duplicateEmailCount + duplicatePhoneCount} duplicates (${duplicateEmailCount} email, ${duplicatePhoneCount} phone).`)
+            toast.success(`Imported ${result.importedCount} leads. Skipped ${result.duplicateEmailCount! + result.duplicatePhoneCount!} duplicates.`)
             setOpen(false)
             setFile(null)
             setSheetUrl("")

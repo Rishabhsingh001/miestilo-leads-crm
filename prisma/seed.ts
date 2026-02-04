@@ -5,21 +5,35 @@ import bcrypt from 'bcryptjs'
 const prisma = new PrismaClient()
 
 async function main() {
-    const password = await bcrypt.hash('admin123', 10)
+    console.log('Cleaning up database...')
+    await prisma.activityLog.deleteMany()
+    await prisma.leadNote.deleteMany()
+    await prisma.task.deleteMany()
+    await prisma.lead.deleteMany()
+    await prisma.user.deleteMany()
 
-    const admin = await prisma.user.upsert({
-        where: { email: 'admin@example.com' },
-        update: {},
-        create: {
-            email: 'admin@example.com',
-            name: 'Admin User',
-            password,
+    console.log('Creating test admin user...')
+    // Create new ID/Pass
+    const password = 'Admin@12345'
+    const hashedPassword = await bcrypt.hash(password, 10)
+
+    const admin = await prisma.user.create({
+        data: {
+            email: 'admin@mikromedia.com',
+            name: 'Mikromedia Admin',
+            password: hashedPassword,
             role: 'admin',
-            status: 'active'
+            status: 'active',
         },
     })
 
     console.log({ admin })
+    console.log('Seeding finished.')
+    console.log('-------------------------------------------')
+    console.log('NEW CREDENTIALS GENERATED:')
+    console.log('Email: admin@mikromedia.com')
+    console.log(`Password: ${password}`)
+    console.log('-------------------------------------------')
 }
 
 main()

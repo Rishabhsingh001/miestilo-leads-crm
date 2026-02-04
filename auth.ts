@@ -4,6 +4,7 @@ import Credentials from "next-auth/providers/credentials"
 import { z } from "zod"
 import { PrismaClient } from "@prisma/client"
 import bcrypt from "bcryptjs"
+import { authConfig } from "./auth.config"
 
 const prisma = new PrismaClient()
 
@@ -18,6 +19,7 @@ async function getUser(email: string) {
 }
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+    ...authConfig,
     providers: [
         Credentials({
             async authorize(credentials) {
@@ -39,29 +41,4 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             },
         }),
     ],
-    pages: {
-        signIn: '/login',
-    },
-    callbacks: {
-        async jwt({ token, user, account }) {
-            if (user) {
-                token.id = user.id
-                // @ts-ignore
-                token.role = user.role
-            }
-            return token
-        },
-        async session({ session, token }) {
-            if (token && session.user) {
-                // @ts-ignore
-                session.user.id = token.id
-                // @ts-ignore
-                session.user.role = token.role
-            }
-            return session
-        }
-    },
-    session: {
-        strategy: "jwt",
-    },
 });
